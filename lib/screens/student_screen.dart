@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../models/task_entry.dart';
 import '../services/notification_service.dart';
+import '../widgets/app_bottom_navigation.dart';
+import '../widgets/profile_initials_button.dart';
 import 'assistant_input_screen.dart';
+import 'calendar_screen.dart';
 
 class StudentScreen extends StatefulWidget {
-  const StudentScreen({super.key});
+  final String displayName;
+
+  const StudentScreen({super.key, required this.displayName});
 
   @override
   State<StudentScreen> createState() => _StudentScreenState();
@@ -20,14 +25,27 @@ class _StudentScreenState extends State<StudentScreen> {
       source: "text",
       reminderSet: true,
     ),
-    const TaskEntry(
-      id: 2,
-      title: "Upload timetable screenshot",
-      source: "image",
-    ),
   ];
 
   int _nextId = 100;
+  int _selectedIndex = 0;
+
+  Future<void> _addTasks(List<TaskEntry> tasks) async {
+    final updatedTasks = <TaskEntry>[];
+
+    for (final task in tasks) {
+      await NotificationService.scheduleForTask(
+        task,
+        reminderBefore: const Duration(days: 1),
+      );
+      updatedTasks.add(task.copyWith(reminderSet: task.dateTime != null));
+    }
+
+    setState(() {
+      _tasks.insertAll(0, updatedTasks);
+      _nextId += tasks.length;
+    });
+  }
 
   Future<void> _openAssistantTools() async {
     final tasks = await Navigator.push<List<TaskEntry>>(
@@ -36,6 +54,8 @@ class _StudentScreenState extends State<StudentScreen> {
         builder: (_) => AssistantInputScreen(
           title: "Add to Student Planner",
           nextId: _nextId,
+          historyKey: "student",
+          onTasksCreated: _addTasks,
         ),
       ),
     );
@@ -44,17 +64,7 @@ class _StudentScreenState extends State<StudentScreen> {
       return;
     }
 
-    final updatedTasks = <TaskEntry>[];
-
-    for (final task in tasks) {
-      await NotificationService.scheduleForTask(task);
-      updatedTasks.add(task.copyWith(reminderSet: task.dateTime != null));
-    }
-
-    setState(() {
-      _tasks.insertAll(0, updatedTasks);
-      _nextId += tasks.length;
-    });
+    await _addTasks(tasks);
   }
 
   @override
@@ -72,38 +82,78 @@ class _StudentScreenState extends State<StudentScreen> {
           "Student Planner",
           style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            tooltip: "Add task",
-            icon: const Icon(
-              Icons.add_circle,
-              color: Color(0xFFE57399),
-              size: 32,
-            ),
-            onPressed: _openAssistantTools,
+        actions: _selectedIndex == 0
+            ? [
+                IconButton(
+                  tooltip: "Add task",
+                  icon: const Icon(
+                    Icons.add_circle,
+                    color: Color(0xFFE57399),
+                    size: 32,
+                  ),
+                  onPressed: _openAssistantTools,
+                ),
+                const SizedBox(width: 8),
+              ]
+            : null,
+      ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          ListView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        "Welcome, ${widget.displayName}",
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    ProfileInitialsButton(
+                      displayName: widget.displayName,
+                      color: const Color(0xFFE57399),
+                    ),
+                  ],
+                ),
+              ),
+              _StudentHubCard(tasksCount: _tasks.length),
+              const _StudyFocusBanner(),
+              const _SectionTitle("Today's Study Tasks"),
+              if (_tasks.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    "Add your first study task using the plus button.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.black54, fontSize: 16),
+                  ),
+                )
+              else
+                ..._tasks.map((task) => _StudentTaskCard(task: task)),
+            ],
           ),
-          const SizedBox(width: 8),
+          CalendarScreen(
+            tasks: _tasks,
+            accentColor: const Color(0xFFE57399),
+            title: "Student\nSchedule",
+          ),
         ],
       ),
-      body: ListView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 24),
-        children: [
-          _StudentHubCard(tasksCount: _tasks.length),
-          const _StudyFocusBanner(),
-          const _SectionTitle("Today's Study Tasks"),
-          if (_tasks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Text(
-                "Add your first study task using the plus button.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black54, fontSize: 16),
-              ),
-            )
-          else
-            ..._tasks.map((task) => _StudentTaskCard(task: task)),
-        ],
+      bottomNavigationBar: AppBottomNavigation(
+        selectedIndex: _selectedIndex,
+        accentColor: const Color(0xFFE57399),
+        onSelected: (index) {
+          setState(() => _selectedIndex = index);
+        },
       ),
     );
   }

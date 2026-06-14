@@ -33,7 +33,15 @@ void main() {
     await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Choose your workspace'), findsOneWidget);
+    expect(find.text('What should I call you?'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'Manas');
+    await tester.ensureVisible(find.text('Continue'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Welcome, Manas'), findsOneWidget);
+    expect(find.text('Choose your workspace to continue.'), findsOneWidget);
     expect(find.text('Student Mode'), findsOneWidget);
     expect(find.text('Professional Mode'), findsOneWidget);
   });

@@ -35,17 +35,25 @@ class NotificationService {
     await androidPlugin?.requestNotificationsPermission();
   }
 
-  static Future<void> scheduleForTask(TaskEntry entry) async {
+  static Future<void> scheduleForTask(
+    TaskEntry entry, {
+    Duration reminderBefore = Duration.zero,
+  }) async {
     if (entry.dateTime == null || entry.dateTime!.isBefore(DateTime.now())) {
       await showNotification(title: "Task added", body: entry.title);
       return;
     }
 
+    final reminderTime = entry.dateTime!.subtract(reminderBefore);
+    final scheduledTime = reminderTime.isAfter(DateTime.now())
+        ? reminderTime
+        : entry.dateTime!;
+
     await _notificationsPlugin.zonedSchedule(
       id: entry.id,
       title: "Reminder",
       body: entry.title,
-      scheduledDate: tz.TZDateTime.from(entry.dateTime!, tz.local),
+      scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
       notificationDetails: _notificationDetails(),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );

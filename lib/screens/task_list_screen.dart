@@ -46,6 +46,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
         builder: (_) => AssistantInputScreen(
           title: "Add to ${widget.title}",
           nextId: _nextId,
+          historyKey: widget.title.toLowerCase().replaceAll(" ", "_"),
         ),
       ),
     );
