@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,7 +16,7 @@ class SmartInputBar extends StatefulWidget {
   final int nextId;
   final String historyKey;
   final bool enableStudentAi;
-  final Future<void> Function(List<TaskEntry>) onEntriesCreated;
+  final Future<List<TaskEntry>> Function(List<TaskEntry>) onEntriesCreated;
   final VoidCallback? onHistoryChanged;
 
   const SmartInputBar({
@@ -359,10 +362,7 @@ class _StudyPlanDialogState extends State<_StudyPlanDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: const Text(
         "Create study plan",
-        style: TextStyle(
-          color: Color(0xFF151515),
-          fontWeight: FontWeight.w800,
-        ),
+        style: TextStyle(color: Color(0xFF151515), fontWeight: FontWeight.w800),
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -385,10 +385,7 @@ class _StudyPlanDialogState extends State<_StudyPlanDialog> {
               const SizedBox(height: 8),
               Text(
                 _fileMessage!,
-                style: const TextStyle(
-                  color: Color(0xFF777777),
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Color(0xFF777777), fontSize: 12),
               ),
             ],
             const SizedBox(height: 12),
@@ -436,30 +433,83 @@ class _StudyPlanDialogState extends State<_StudyPlanDialog> {
 
     final file = result.files.single;
     final extension = file.extension?.toLowerCase();
+    final fileText = await _readPickedFileText(file);
 
     if (extension == "pdf") {
+      if (fileText.trim().isNotEmpty) {
+        setState(() {
+          _notesController.text = fileText;
+          _notesController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _notesController.text.length),
+          );
+          _fileMessage = "Loaded text from ${file.name}.";
+        });
+        return;
+      }
+
       setState(() {
         _fileMessage =
-            "PDF selected. Paste the PDF text here for now, then create the plan.";
+            "Could not read text from this PDF. Try a text-based PDF or paste notes.";
       });
       return;
     }
 
-    final bytes = file.bytes;
-    if (bytes == null) {
+    if (fileText.trim().isEmpty) {
       setState(() {
-        _fileMessage = "Could not read ${file.name}. Try txt/md or paste notes.";
+        _fileMessage =
+            "Could not read ${file.name}. Try txt/md or paste notes.";
       });
       return;
     }
 
     setState(() {
-      _notesController.text = String.fromCharCodes(bytes);
+      _notesController.text = fileText;
       _notesController.selection = TextSelection.fromPosition(
         TextPosition(offset: _notesController.text.length),
       );
       _fileMessage = "Loaded ${file.name}.";
     });
+  }
+
+  Future<String> _readPickedFileText(PlatformFile file) async {
+    final extension = file.extension?.toLowerCase();
+    final bytes =
+        file.bytes ??
+        (file.path == null ? null : await File(file.path!).readAsBytes());
+
+    if (bytes == null || bytes.isEmpty) {
+      return "";
+    }
+
+    if (extension == "pdf") {
+      return _extractSimplePdfText(bytes);
+    }
+
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  String _extractSimplePdfText(List<int> bytes) {
+    final raw = latin1.decode(bytes, allowInvalid: true);
+    final matches = RegExp(r'\(([^()]*)\)\s*Tj|\(([^()]*)\)')
+        .allMatches(raw)
+        .map((match) => match.group(1) ?? match.group(2) ?? "")
+        .map(_decodePdfTextChunk)
+        .where((text) => text.trim().length > 2)
+        .toList();
+
+    return matches.join("\n").replaceAll(RegExp(r'\n{3,}'), "\n\n").trim();
+  }
+
+  String _decodePdfTextChunk(String value) {
+    return value
+        .replaceAll(r'\(', "(")
+        .replaceAll(r'\)', ")")
+        .replaceAll(r'\\', r'\')
+        .replaceAll(r'\n', "\n")
+        .replaceAll(r'\r', "\n")
+        .replaceAll(r'\t', " ")
+        .replaceAll(RegExp(r'\s+'), " ")
+        .trim();
   }
 
   InputDecoration _dialogInputDecoration(String hintText) {

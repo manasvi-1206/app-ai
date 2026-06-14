@@ -52,7 +52,9 @@ class NotificationService {
     await _notificationsPlugin.zonedSchedule(
       id: entry.id,
       title: "Reminder",
-      body: entry.title,
+      body: reminderBefore == Duration.zero
+          ? entry.title
+          : "${entry.title} starts ${_durationLabel(reminderBefore)} later",
       scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
       notificationDetails: _notificationDetails(),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -80,12 +82,22 @@ class NotificationService {
         AndroidNotificationDetails(
           'assistant_channel',
           'Assistant Notifications',
-          channelDescription: 'Notifications for AI Personal Assistant',
+          channelDescription: 'Notifications for Buddy',
           importance: Importance.high,
           priority: Priority.high,
         );
 
     return const NotificationDetails(android: androidDetails);
+  }
+
+  static String _durationLabel(Duration duration) {
+    if (duration.inDays >= 1 && duration.inHours % 24 == 0) {
+      return "${duration.inDays} day${duration.inDays == 1 ? "" : "s"}";
+    }
+    if (duration.inHours >= 1 && duration.inMinutes % 60 == 0) {
+      return "${duration.inHours} hour${duration.inHours == 1 ? "" : "s"}";
+    }
+    return "${duration.inMinutes} minute${duration.inMinutes == 1 ? "" : "s"}";
   }
 
   static Future<void> _setLocalTimezone() async {

@@ -4,6 +4,7 @@ class TaskEntry {
   final DateTime? dateTime;
   final String source;
   final bool reminderSet;
+  final Duration? reminderBefore;
 
   const TaskEntry({
     required this.id,
@@ -11,6 +12,7 @@ class TaskEntry {
     required this.source,
     this.dateTime,
     this.reminderSet = false,
+    this.reminderBefore,
   });
 
   String get dateLabel {
@@ -35,6 +37,7 @@ class TaskEntry {
     DateTime? dateTime,
     String? source,
     bool? reminderSet,
+    Duration? reminderBefore,
   }) {
     return TaskEntry(
       id: id ?? this.id,
@@ -42,6 +45,7 @@ class TaskEntry {
       dateTime: dateTime ?? this.dateTime,
       source: source ?? this.source,
       reminderSet: reminderSet ?? this.reminderSet,
+      reminderBefore: reminderBefore ?? this.reminderBefore,
     );
   }
 }

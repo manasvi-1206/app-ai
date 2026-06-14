@@ -7,6 +7,7 @@ class CalendarScreen extends StatefulWidget {
   final Color accentColor;
   final String title;
   final ValueChanged<TaskEntry>? onDelete;
+  final ValueChanged<TaskEntry>? onComplete;
 
   const CalendarScreen({
     super.key,
@@ -14,6 +15,7 @@ class CalendarScreen extends StatefulWidget {
     required this.accentColor,
     required this.title,
     this.onDelete,
+    this.onComplete,
   });
 
   @override
@@ -106,6 +108,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 task: task,
                 accentColor: widget.accentColor,
                 onDelete: widget.onDelete,
+                onComplete: widget.onComplete,
               ),
             ),
         ],
@@ -305,11 +308,13 @@ class _TaskDayCard extends StatelessWidget {
   final TaskEntry task;
   final Color accentColor;
   final ValueChanged<TaskEntry>? onDelete;
+  final ValueChanged<TaskEntry>? onComplete;
 
   const _TaskDayCard({
     required this.task,
     required this.accentColor,
     this.onDelete,
+    this.onComplete,
   });
 
   @override
@@ -323,6 +328,14 @@ class _TaskDayCard extends StatelessWidget {
       ),
       child: Row(
         children: [
+          if (onComplete != null) ...[
+            Checkbox(
+              value: false,
+              activeColor: accentColor,
+              onChanged: (_) => onComplete!(task),
+            ),
+            const SizedBox(width: 4),
+          ],
           Icon(Icons.event_note_outlined, color: accentColor),
           const SizedBox(width: 12),
           Expanded(

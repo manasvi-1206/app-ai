@@ -4,6 +4,7 @@ import '../models/task_entry.dart';
 import '../services/notification_service.dart';
 import '../widgets/app_bottom_navigation.dart';
 import '../widgets/profile_initials_button.dart';
+import '../widgets/task_conflict_resolver.dart';
 import 'assistant_input_screen.dart';
 import 'calendar_screen.dart';
 
@@ -21,7 +22,7 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
     TaskEntry(
       id: 50,
       title: "Project sync meeting",
-      dateTime: DateTime.now().add(const Duration(days: 1, hours: 2)),
+      dateTime: DateTime.now().add(const Duration(hours: 2)),
       source: "text",
       reminderSet: true,
     ),
@@ -29,22 +30,46 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
 
   int _nextId = 200;
   int _selectedIndex = 0;
+  int _completedWork = 0;
 
-  Future<void> _addTasks(List<TaskEntry> tasks) async {
-    final updatedTasks = <TaskEntry>[];
+  Future<List<TaskEntry>> _addTasks(List<TaskEntry> tasks) async {
+    final result = await TaskConflictResolver.resolve(
+      context: context,
+      existingTasks: _tasks,
+      incomingTasks: tasks,
+      accentColor: const Color(0xFF2F7DFF),
+    );
 
-    for (final task in tasks) {
+    for (final task in result.updatedTasks) {
+      await NotificationService.cancelForTask(task);
       await NotificationService.scheduleForTask(
         task,
-        reminderBefore: const Duration(hours: 1),
+        reminderBefore: task.reminderBefore ?? const Duration(hours: 1),
+      );
+    }
+
+    final updatedTasks = <TaskEntry>[];
+
+    for (final task in result.addedTasks) {
+      await NotificationService.scheduleForTask(
+        task,
+        reminderBefore: task.reminderBefore ?? const Duration(hours: 1),
       );
       updatedTasks.add(task.copyWith(reminderSet: task.dateTime != null));
     }
 
     setState(() {
+      for (final task in result.updatedTasks) {
+        final index = _tasks.indexWhere((entry) => entry.id == task.id);
+        if (index != -1) {
+          _tasks[index] = task.copyWith(reminderSet: task.dateTime != null);
+        }
+      }
       _tasks.insertAll(0, updatedTasks);
       _nextId += tasks.length;
     });
+
+    return updatedTasks;
   }
 
   Future<void> _openAssistantTools() async {
@@ -67,10 +92,74 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
     await _addTasks(tasks);
   }
 
+  Future<void> _deleteTask(TaskEntry task) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Delete task"),
+          content: const Text("Are you sure you want to delete this schedule?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    await NotificationService.cancelForTask(task);
+
+    setState(() {
+      _tasks.removeWhere((entry) => entry.id == task.id);
+    });
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Schedule deleted")));
+  }
+
+  Future<void> _completeTask(TaskEntry task) async {
+    await NotificationService.cancelForTask(task);
+
+    setState(() {
+      _tasks.removeWhere((entry) => entry.id == task.id);
+      _completedWork += 1;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final meetingsCount = _tasks.where(_isMeetingTask).length;
     final notesCount = _tasks.where(_isNotesTask).length;
+    final todayTasks = _tasks.where((task) => _isToday(task.dateTime)).toList()
+      ..sort(_compareTaskDate);
+    final upcomingTasks =
+        _tasks
+            .where(
+              (task) =>
+                  task.dateTime != null &&
+                  !_isToday(task.dateTime) &&
+                  task.dateTime!.isAfter(DateTime.now()),
+            )
+            .toList()
+          ..sort(_compareTaskDate);
+    final unscheduledTasks = _tasks
+        .where((task) => task.dateTime == null)
+        .toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
@@ -132,26 +221,57 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
                 tasksCount: _tasks.length,
                 meetingsCount: meetingsCount,
                 notesCount: notesCount,
+                completedCount: _completedWork,
               ),
               const _WorkFocusBanner(),
               const _SectionTitle("Today's Work Tasks"),
-              if (_tasks.isEmpty)
+              if (todayTasks.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(32),
                   child: Text(
-                    "Add your first work task using the plus button.",
+                    "No work tasks due today.",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.black54, fontSize: 16),
                   ),
                 )
               else
-                ..._tasks.map((task) => _ProfessionalTaskCard(task: task)),
+                ...todayTasks.map(
+                  (task) => _ProfessionalTaskCard(
+                    task: task,
+                    onDelete: _deleteTask,
+                    onComplete: _completeTask,
+                  ),
+                ),
+              if (upcomingTasks.isNotEmpty) ...[
+                const _SectionTitle("Upcoming"),
+                ...upcomingTasks
+                    .take(5)
+                    .map(
+                      (task) => _ProfessionalTaskCard(
+                        task: task,
+                        onDelete: _deleteTask,
+                        onComplete: _completeTask,
+                      ),
+                    ),
+              ],
+              if (unscheduledTasks.isNotEmpty) ...[
+                const _SectionTitle("Unscheduled"),
+                ...unscheduledTasks.map(
+                  (task) => _ProfessionalTaskCard(
+                    task: task,
+                    onDelete: _deleteTask,
+                    onComplete: _completeTask,
+                  ),
+                ),
+              ],
             ],
           ),
           CalendarScreen(
             tasks: _tasks,
             accentColor: const Color(0xFF2F7DFF),
             title: "Professional\nSchedule",
+            onDelete: _deleteTask,
+            onComplete: _completeTask,
           ),
         ],
       ),
@@ -177,17 +297,35 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
     final title = task.title.toLowerCase();
     return title.contains("note") || title.contains("notes");
   }
+
+  static bool _isToday(DateTime? dateTime) {
+    if (dateTime == null) {
+      return false;
+    }
+    final now = DateTime.now();
+    return dateTime.year == now.year &&
+        dateTime.month == now.month &&
+        dateTime.day == now.day;
+  }
+
+  static int _compareTaskDate(TaskEntry a, TaskEntry b) {
+    final aDate = a.dateTime ?? DateTime(9999);
+    final bDate = b.dateTime ?? DateTime(9999);
+    return aDate.compareTo(bDate);
+  }
 }
 
 class _ProfessionalHubCard extends StatelessWidget {
   final int tasksCount;
   final int meetingsCount;
   final int notesCount;
+  final int completedCount;
 
   const _ProfessionalHubCard({
     required this.tasksCount,
     required this.meetingsCount,
     required this.notesCount,
+    required this.completedCount,
   });
 
   @override
@@ -246,21 +384,21 @@ class _ProfessionalHubCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(
-                child: _ProfessionalStatCard(
-                  icon: Icons.flag_outlined,
-                  iconColor: Colors.deepOrange,
-                  title: "Projects",
-                  value: "2",
-                ),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: _ProfessionalStatCard(
                   icon: Icons.description_outlined,
                   iconColor: Colors.indigo,
                   title: "Notes",
                   value: "$notesCount",
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ProfessionalStatCard(
+                  icon: Icons.done_all,
+                  iconColor: Colors.green,
+                  title: "Done",
+                  value: "$completedCount",
                 ),
               ),
             ],
@@ -327,72 +465,100 @@ class _SectionTitle extends StatelessWidget {
 
 class _ProfessionalTaskCard extends StatelessWidget {
   final TaskEntry task;
+  final Future<void> Function(TaskEntry) onDelete;
+  final Future<void> Function(TaskEntry) onComplete;
 
-  const _ProfessionalTaskCard({required this.task});
+  const _ProfessionalTaskCard({
+    required this.task,
+    required this.onDelete,
+    required this.onComplete,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isImage = task.source == "image";
     final isVoice = task.source == "voice";
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+    return Dismissible(
+      key: ValueKey("professional-task-${task.id}"),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        await onDelete(task);
+        return false;
+      },
+      background: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.only(right: 20),
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          color: Colors.redAccent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isImage
-                  ? const Color(0xFFE0F2F1)
-                  : const Color(0xFFE8F0FE),
-              borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            child: Icon(
-              isImage
-                  ? Icons.image_outlined
-                  : isVoice
-                  ? Icons.mic_none_rounded
-                  : Icons.business_center_outlined,
-              color: isImage ? Colors.teal : const Color(0xFF2F7DFF),
-              size: 24,
+          ],
+        ),
+        child: Row(
+          children: [
+            Checkbox(
+              value: false,
+              activeColor: const Color(0xFF2F7DFF),
+              onChanged: (_) => onComplete(task),
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isImage
+                    ? const Color(0xFFE0F2F1)
+                    : const Color(0xFFE8F0FE),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                isImage
+                    ? Icons.image_outlined
+                    : isVoice
+                    ? Icons.mic_none_rounded
+                    : Icons.business_center_outlined,
+                color: isImage ? Colors.teal : const Color(0xFF2F7DFF),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  task.dateLabel,
-                  style: const TextStyle(fontSize: 12, color: Colors.black45),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Text(
+                    task.dateLabel,
+                    style: const TextStyle(fontSize: 12, color: Colors.black45),
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (task.reminderSet)
-            const Icon(Icons.notifications_none, color: Color(0xFF2F7DFF)),
-        ],
+          ],
+        ),
       ),
     );
   }

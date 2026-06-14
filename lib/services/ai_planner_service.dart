@@ -19,6 +19,7 @@ class AiPlannerService {
         .map((line) => line.trim())
         .where((line) => line.length > 2)
         .toList();
+    final subjectTitles = _extractSubjectTitles(lines);
 
     final parsedTasks = CommandParserService.parseMany(
       startId: startId,
@@ -27,7 +28,7 @@ class AiPlannerService {
     ).where((task) => task.dateTime != null).toList();
 
     if (parsedTasks.isNotEmpty) {
-      return _improveWeakTitles(parsedTasks, lines);
+      return _improveWeakTitles(parsedTasks, lines, subjectTitles);
     }
 
     final tasks = <TaskEntry>[];
@@ -46,7 +47,7 @@ class AiPlannerService {
       if (task.dateTime != null) {
         var title = _cleanExamTitle(task.title);
         if (_isWeakTitle(title)) {
-          title = _titleFromNearbyLine(lines, index);
+          title = _titleFromNearbyLine(lines, index, subjectTitles);
         }
         tasks.add(task.copyWith(title: title));
       }
@@ -137,16 +138,27 @@ class AiPlannerService {
     final cleaned = title
         .replaceAll(
           RegExp(
-            r'\b(exam timetable|timetable|exam date|date|time)\b',
+            r'\b(exam timetable|timetable|exam date|schedule|date|time|day|subject|sub|paper|session|slot|class)\b',
             caseSensitive: false,
           ),
           "",
         )
         .replaceAll(_dateHintPattern, "")
-        .replaceAll(RegExp(r'\b\d{1,2}(:\d{2})?\s*(am|pm)?\b', caseSensitive: false), "")
+        .replaceAll(
+          RegExp(
+            r'\b\d{1,2}(:\d{2})?\s*([ap]\s*[mn])?\b',
+            caseSensitive: false,
+          ),
+          "",
+        )
+        .replaceAll(RegExp(r'\b\d{1,4}\b'), "")
+        .replaceAll(RegExp(r'[:|,]'), " ")
         .replaceAll(RegExp(r'\s+'), " ")
         .trim();
 
+    if (cleaned.isEmpty) {
+      return "Exam";
+    }
     if (cleaned.toLowerCase().contains("exam")) {
       return cleaned;
     }
@@ -156,22 +168,89 @@ class AiPlannerService {
   static List<TaskEntry> _improveWeakTitles(
     List<TaskEntry> tasks,
     List<String> lines,
+    List<String> subjectTitles,
   ) {
-    var lineIndex = 0;
+    var subjectIndex = 0;
+    var searchIndex = 0;
+
     return tasks.map((task) {
       final cleanedTitle = _cleanExamTitle(task.title);
       if (!_isWeakTitle(cleanedTitle)) {
         return task.copyWith(title: cleanedTitle);
       }
 
-      final title = _titleFromNearbyLine(lines, lineIndex);
-      lineIndex += 1;
+      final matchingLineIndex = _findMatchingScheduleLine(lines, task, searchIndex);
+      if (matchingLineIndex != null) {
+        searchIndex = matchingLineIndex + 1;
+        final nearbyTitle = _titleFromNearbyLine(
+          lines,
+          matchingLineIndex,
+          subjectTitles,
+        );
+        if (!_isWeakTitle(nearbyTitle)) {
+          return task.copyWith(title: nearbyTitle);
+        }
+      }
+
+      final title = subjectIndex < subjectTitles.length
+          ? subjectTitles[subjectIndex++]
+          : "Exam";
       return task.copyWith(title: title);
     }).toList();
   }
 
-  static String _titleFromNearbyLine(List<String> lines, int startIndex) {
-    for (var offset = 0; offset < lines.length; offset++) {
+  static int? _findMatchingScheduleLine(
+    List<String> lines,
+    TaskEntry task,
+    int startIndex,
+  ) {
+    if (task.dateTime == null) {
+      return null;
+    }
+
+    for (var index = startIndex; index < lines.length; index++) {
+      if (_lineCouldContainTaskTime(lines[index], task.dateTime!)) {
+        return index;
+      }
+    }
+
+    for (var index = 0; index < startIndex && index < lines.length; index++) {
+      if (_lineCouldContainTaskTime(lines[index], task.dateTime!)) {
+        return index;
+      }
+    }
+
+    return null;
+  }
+
+  static bool _lineCouldContainTaskTime(String line, DateTime dateTime) {
+    final lower = line.toLowerCase();
+    final compact = lower.replaceAll(RegExp(r'\s+'), "");
+    final day = dateTime.day.toString();
+    final month = dateTime.month.toString();
+    final paddedDay = day.padLeft(2, "0");
+    final paddedMonth = month.padLeft(2, "0");
+    final hour12 = dateTime.hour > 12
+        ? dateTime.hour - 12
+        : dateTime.hour == 0
+        ? 12
+        : dateTime.hour;
+    final period = dateTime.hour >= 12 ? "p" : "a";
+
+    return compact.contains("$day/$month") ||
+        compact.contains("$paddedDay/$paddedMonth") ||
+        compact.contains("$day-$month") ||
+        compact.contains("$paddedDay-$paddedMonth") ||
+        compact.contains("$hour12$period") ||
+        compact.contains("${dateTime.hour}:${dateTime.minute.toString().padLeft(2, "0")}");
+  }
+
+  static String _titleFromNearbyLine(
+    List<String> lines,
+    int startIndex,
+    List<String> subjectTitles,
+  ) {
+    for (var offset = 0; offset <= 3; offset++) {
       final forwardIndex = startIndex + offset;
       if (forwardIndex < lines.length) {
         final title = _candidateTitle(lines[forwardIndex]);
@@ -189,15 +268,55 @@ class AiPlannerService {
       }
     }
 
-    return "Exam";
+    return subjectTitles.isNotEmpty ? subjectTitles.first : "Exam";
+  }
+
+  static List<String> _extractSubjectTitles(List<String> lines) {
+    final titles = <String>[];
+
+    for (final line in lines) {
+      final title = _candidateTitle(line);
+      if (title == null || titles.contains(title)) {
+        continue;
+      }
+      titles.add(title);
+    }
+
+    return titles;
   }
 
   static String? _candidateTitle(String line) {
+    if (_isHeaderOrScheduleOnlyLine(line)) {
+      return null;
+    }
+
     final title = _cleanExamTitle(line);
     if (_isWeakTitle(title)) {
       return null;
     }
     return title;
+  }
+
+  static bool _isHeaderOrScheduleOnlyLine(String line) {
+    final lower = line.toLowerCase().trim();
+    final withoutDates = lower
+        .replaceAll(_dateHintPattern, "")
+        .replaceAll(
+          RegExp(r'\b\d{1,2}(:\d{2})?\s*([ap]\s*[mn])?\b'),
+          "",
+        )
+        .replaceAll(RegExp(r'[-/|,:]'), " ")
+        .replaceAll(RegExp(r'\s+'), " ")
+        .trim();
+
+    if (withoutDates.isEmpty) {
+      return true;
+    }
+
+    return RegExp(
+      r'^(exam|exams|test|tests|timetable|schedule|date|time|day|subject|paper|session|slot)s?$',
+      caseSensitive: false,
+    ).hasMatch(withoutDates);
   }
 
   static bool _isWeakTitle(String title) {

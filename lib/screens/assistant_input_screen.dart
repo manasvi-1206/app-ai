@@ -9,7 +9,7 @@ class AssistantInputScreen extends StatefulWidget {
   final int nextId;
   final String historyKey;
   final bool enableStudentAi;
-  final Future<void> Function(List<TaskEntry>)? onTasksCreated;
+  final Future<List<TaskEntry>> Function(List<TaskEntry>)? onTasksCreated;
 
   const AssistantInputScreen({
     super.key,
@@ -36,7 +36,9 @@ class _AssistantInputScreenState extends State<AssistantInputScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final history = AiHistoryService.entriesFor(widget.historyKey).reversed.toList();
+    final history = AiHistoryService.entriesFor(
+      widget.historyKey,
+    ).reversed.toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F2F4),
@@ -72,10 +74,7 @@ class _AssistantInputScreenState extends State<AssistantInputScreen> {
                 const _AssistantIntroCard(),
                 if (_createdTasks.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Text(
-                    "Added in this session",
-                    style: _sectionStyle,
-                  ),
+                  Text("Added in this session", style: _sectionStyle),
                   const SizedBox(height: 10),
                   ..._createdTasks.map((task) => _DetectedTaskCard(task: task)),
                 ],
@@ -97,10 +96,12 @@ class _AssistantInputScreenState extends State<AssistantInputScreen> {
               setState(() {});
             },
             onEntriesCreated: (tasks) async {
+              final addedTasks =
+                  await widget.onTasksCreated?.call(tasks) ?? tasks;
               setState(() {
-                _createdTasks.addAll(tasks);
+                _createdTasks.addAll(addedTasks);
               });
-              await widget.onTasksCreated?.call(tasks);
+              return addedTasks;
             },
           ),
         ],
@@ -190,7 +191,10 @@ class _DetectedTaskCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   task.dateLabel,
-                  style: const TextStyle(color: Color(0xFF777777), fontSize: 12),
+                  style: const TextStyle(
+                    color: Color(0xFF777777),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),

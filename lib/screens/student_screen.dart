@@ -4,6 +4,7 @@ import '../models/task_entry.dart';
 import '../services/notification_service.dart';
 import '../widgets/app_bottom_navigation.dart';
 import '../widgets/profile_initials_button.dart';
+import '../widgets/task_conflict_resolver.dart';
 import 'assistant_input_screen.dart';
 import 'calendar_screen.dart';
 
@@ -21,7 +22,7 @@ class _StudentScreenState extends State<StudentScreen> {
     TaskEntry(
       id: 1,
       title: "AI lecture",
-      dateTime: DateTime.now().add(const Duration(days: 1, hours: 1)),
+      dateTime: DateTime.now().add(const Duration(hours: 1)),
       source: "text",
       reminderSet: true,
     ),
@@ -31,21 +32,44 @@ class _StudentScreenState extends State<StudentScreen> {
   int _selectedIndex = 0;
   int _completedGoals = 0;
 
-  Future<void> _addTasks(List<TaskEntry> tasks) async {
-    final updatedTasks = <TaskEntry>[];
+  Future<List<TaskEntry>> _addTasks(List<TaskEntry> tasks) async {
+    final result = await TaskConflictResolver.resolve(
+      context: context,
+      existingTasks: _tasks,
+      incomingTasks: tasks,
+      accentColor: const Color(0xFFE57399),
+    );
 
-    for (final task in tasks) {
+    for (final task in result.updatedTasks) {
+      await NotificationService.cancelForTask(task);
       await NotificationService.scheduleForTask(
         task,
-        reminderBefore: const Duration(days: 1),
+        reminderBefore: task.reminderBefore ?? const Duration(days: 1),
+      );
+    }
+
+    final updatedTasks = <TaskEntry>[];
+
+    for (final task in result.addedTasks) {
+      await NotificationService.scheduleForTask(
+        task,
+        reminderBefore: task.reminderBefore ?? const Duration(days: 1),
       );
       updatedTasks.add(task.copyWith(reminderSet: task.dateTime != null));
     }
 
     setState(() {
+      for (final task in result.updatedTasks) {
+        final index = _tasks.indexWhere((entry) => entry.id == task.id);
+        if (index != -1) {
+          _tasks[index] = task.copyWith(reminderSet: task.dateTime != null);
+        }
+      }
       _tasks.insertAll(0, updatedTasks);
       _nextId += tasks.length;
     });
+
+    return updatedTasks;
   }
 
   Future<void> _deleteTask(TaskEntry task) async {
@@ -62,10 +86,7 @@ class _StudentScreenState extends State<StudentScreen> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text(
-                "Delete",
-                style: TextStyle(color: Colors.red),
-              ),
+              child: const Text("Delete", style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -86,9 +107,9 @@ class _StudentScreenState extends State<StudentScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Schedule deleted")),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Schedule deleted")));
   }
 
   Future<void> _completeTask(TaskEntry task) async {
@@ -123,14 +144,34 @@ class _StudentScreenState extends State<StudentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final studyPlanTasks = _tasks
-        .where((task) => task.source == "study_plan")
-        .toList()
-      ..sort((a, b) {
-        final aDate = a.dateTime ?? DateTime(9999);
-        final bDate = b.dateTime ?? DateTime(9999);
-        return aDate.compareTo(bDate);
-      });
+    final studyPlanTasks =
+        _tasks.where((task) => task.source == "study_plan").toList()
+          ..sort((a, b) {
+            final aDate = a.dateTime ?? DateTime(9999);
+            final bDate = b.dateTime ?? DateTime(9999);
+            return aDate.compareTo(bDate);
+          });
+    final todayTasks =
+        _tasks
+            .where(
+              (task) => task.source != "study_plan" && _isToday(task.dateTime),
+            )
+            .toList()
+          ..sort(_compareTaskDate);
+    final upcomingTasks =
+        _tasks
+            .where(
+              (task) =>
+                  task.source != "study_plan" &&
+                  task.dateTime != null &&
+                  !_isToday(task.dateTime) &&
+                  task.dateTime!.isAfter(DateTime.now()),
+            )
+            .toList()
+          ..sort(_compareTaskDate);
+    final unscheduledTasks = _tasks
+        .where((task) => task.source != "study_plan" && task.dateTime == null)
+        .toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFFDFBF7),
@@ -203,23 +244,45 @@ class _StudentScreenState extends State<StudentScreen> {
                 ),
               ],
               const _SectionTitle("Today's Study Tasks"),
-              if (_tasks.isEmpty)
+              if (todayTasks.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(32),
                   child: Text(
-                    "Add your first study task using the plus button.",
+                    "No study tasks due today.",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.black54, fontSize: 16),
                   ),
                 )
               else
-                ..._tasks.map(
+                ...todayTasks.map(
                   (task) => _StudentTaskCard(
                     task: task,
                     onDelete: _deleteTask,
                     onComplete: _completeTask,
                   ),
                 ),
+              if (upcomingTasks.isNotEmpty) ...[
+                const _SectionTitle("Upcoming"),
+                ...upcomingTasks
+                    .take(5)
+                    .map(
+                      (task) => _StudentTaskCard(
+                        task: task,
+                        onDelete: _deleteTask,
+                        onComplete: _completeTask,
+                      ),
+                    ),
+              ],
+              if (unscheduledTasks.isNotEmpty) ...[
+                const _SectionTitle("Unscheduled"),
+                ...unscheduledTasks.map(
+                  (task) => _StudentTaskCard(
+                    task: task,
+                    onDelete: _deleteTask,
+                    onComplete: _completeTask,
+                  ),
+                ),
+              ],
             ],
           ),
           CalendarScreen(
@@ -227,6 +290,7 @@ class _StudentScreenState extends State<StudentScreen> {
             accentColor: const Color(0xFFE57399),
             title: "Student\nSchedule",
             onDelete: _deleteTask,
+            onComplete: _completeTask,
           ),
         ],
       ),
@@ -238,6 +302,22 @@ class _StudentScreenState extends State<StudentScreen> {
         },
       ),
     );
+  }
+
+  static bool _isToday(DateTime? dateTime) {
+    if (dateTime == null) {
+      return false;
+    }
+    final now = DateTime.now();
+    return dateTime.year == now.year &&
+        dateTime.month == now.month &&
+        dateTime.day == now.day;
+  }
+
+  static int _compareTaskDate(TaskEntry a, TaskEntry b) {
+    final aDate = a.dateTime ?? DateTime(9999);
+    final bDate = b.dateTime ?? DateTime(9999);
+    return aDate.compareTo(bDate);
   }
 }
 
@@ -541,7 +621,10 @@ class _StudyPlanNotesSection extends StatelessWidget {
                       color: Colors.redAccent,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.delete_outline, color: Colors.white),
+                    child: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.white,
+                    ),
                   ),
                   child: Row(
                     children: [

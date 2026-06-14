@@ -2,7 +2,7 @@ import '../models/task_entry.dart';
 
 class CommandParserService {
   static final RegExp _timePattern = RegExp(
-    r'\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b',
+    r'\b(\d{1,2})(?::(\d{2}))?\s*([ap])\s*([mn])\b',
     caseSensitive: false,
   );
   static final RegExp _twentyFourHourTimePattern = RegExp(
@@ -21,6 +21,10 @@ class CommandParserService {
   );
   static final RegExp _monthDayPattern = RegExp(
     r'\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+(\d{1,2})\b',
+    caseSensitive: false,
+  );
+  static final RegExp _reminderBeforePattern = RegExp(
+    r'\b(?:notify|remind|alert)?\s*(?:me)?\s*(?:(\d{1,3})\s*)?(minute|minutes|min|mins|hour|hours|hr|hrs|day|days)\s*(?:before|earlier|prior|ahead|early)\b',
     caseSensitive: false,
   );
 
@@ -69,12 +73,14 @@ class CommandParserService {
     final text = input.trim();
     final dateTime = _extractDateTime(text);
     final title = _extractTitle(text);
+    final reminderBefore = _extractReminderBefore(text);
 
     return TaskEntry(
       id: id,
       title: title.isEmpty ? text : title,
       dateTime: dateTime,
       source: source,
+      reminderBefore: reminderBefore,
     );
   }
 
@@ -113,6 +119,7 @@ class CommandParserService {
         detectedTime.minute,
       );
       final title = _extractTitle(line);
+      final reminderBefore = _extractReminderBefore(line);
 
       tasks.add(
         TaskEntry(
@@ -120,6 +127,7 @@ class CommandParserService {
           title: title.isEmpty ? line : title,
           dateTime: dateTime,
           source: source,
+          reminderBefore: reminderBefore,
         ),
       );
     }
@@ -200,7 +208,7 @@ class CommandParserService {
     if (timeMatch != null) {
       var hour = int.parse(timeMatch.group(1)!);
       final minute = int.tryParse(timeMatch.group(2) ?? "0") ?? 0;
-      final period = timeMatch.group(3)!.toLowerCase();
+      final period = timeMatch.group(3)!.toLowerCase() == "p" ? "pm" : "am";
 
       if (period == "pm" && hour != 12) {
         hour += 12;
@@ -240,9 +248,10 @@ class CommandParserService {
     title = title.replaceAll(_dayMonthPattern, "");
     title = title.replaceAll(_monthDayPattern, "");
     title = title.replaceAll(_daysLaterPattern, "");
+    title = title.replaceAll(_reminderBeforePattern, "");
     title = title.replaceAll(
       RegExp(
-        r'\b(add|create|schedule|remind me to|reminder|today|tomorrow|at|on|in|after|from now)\b',
+        r'\b(add|create|schedule|remind me to|remind|notify me|notify|alert me|alert|reminder|today|tomorrow|at|on|in|after|from now)\b',
         caseSensitive: false,
       ),
       "",
@@ -256,6 +265,33 @@ class CommandParserService {
         .replaceAll(RegExp(r'\s*[-–—]\s*'), " ")
         .replaceAll(RegExp(r'\s+'), " ")
         .trim();
+  }
+
+  static Duration? _extractReminderBefore(String text) {
+    final lower = text.toLowerCase();
+
+    if (lower.contains("on time") ||
+        lower.contains("at the time") ||
+        lower.contains("notify me then") ||
+        lower.contains("remind me then")) {
+      return Duration.zero;
+    }
+
+    final match = _reminderBeforePattern.firstMatch(text);
+    if (match == null) {
+      return null;
+    }
+
+    final amount = int.tryParse(match.group(1) ?? "1") ?? 1;
+    final unit = match.group(2)!.toLowerCase();
+
+    if (unit.startsWith("min")) {
+      return Duration(minutes: amount);
+    }
+    if (unit.startsWith("h")) {
+      return Duration(hours: amount);
+    }
+    return Duration(days: amount);
   }
 
   static DateTime _today() {

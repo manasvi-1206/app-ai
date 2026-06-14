@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/buddy_logo.dart';
 import '../widgets/custom_button.dart';
 import 'home_screen.dart';
 
@@ -45,11 +46,7 @@ class _NameScreenState extends State<NameScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Color(0xFF1E1E23),
-                  child: Icon(Icons.person_outline, color: Colors.white, size: 28),
-                ),
+                const BuddyLogo(size: 58, showWordmark: true),
                 const SizedBox(height: 22),
                 const Text(
                   "What should\nI call you?",
@@ -124,7 +121,10 @@ class _NameScreenState extends State<NameScreen> {
                         onFieldSubmitted: (_) => _continueToModes(),
                       ),
                       const SizedBox(height: 22),
-                      CustomButton(text: "Continue", onPressed: _continueToModes),
+                      CustomButton(
+                        text: "Continue",
+                        onPressed: _continueToModes,
+                      ),
                     ],
                   ),
                 ),
@@ -157,7 +157,10 @@ class _NamePreviewCard extends StatelessWidget {
             backgroundColor: Color(0xFFE57399),
             child: Text(
               "U",
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
           SizedBox(width: 14),

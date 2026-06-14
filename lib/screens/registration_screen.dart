@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/custom_button.dart';
+import '../widgets/buddy_logo.dart';
 import 'name_screen.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -47,9 +48,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _AuthHeader(
-                  icon: Icons.auto_awesome,
-                  title: "Start planning",
-                  subtitle: "Create your assistant space for study, work, and reminders.",
+                  title: "Buddy",
+                  subtitle:
+                      "Create your assistant space for study, work, and reminders.",
                 ),
                 const SizedBox(height: 28),
                 Container(
@@ -189,34 +190,35 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 }
 
 class _AuthHeader extends StatelessWidget {
-  final IconData icon;
   final String title;
   final String subtitle;
 
-  const _AuthHeader({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
+  const _AuthHeader({required this.title, required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: const Color(0xFF1E1E23),
-          child: Icon(icon, color: Colors.white, size: 28),
-        ),
-        const SizedBox(height: 22),
+        const BuddyLogo(size: 62),
+        const SizedBox(height: 20),
         Text(
           title,
           style: const TextStyle(
             color: Color(0xFF151515),
-            fontSize: 42,
+            fontSize: 54,
             height: 1.02,
             fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          "Your AI planner",
+          style: TextStyle(
+            color: Color(0xFF1E1E23),
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            height: 1.2,
           ),
         ),
         const SizedBox(height: 10),

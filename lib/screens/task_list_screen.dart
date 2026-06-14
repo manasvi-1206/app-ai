@@ -29,7 +29,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
     final updatedTasks = <TaskEntry>[];
 
     for (final task in tasks) {
-      await NotificationService.scheduleForTask(task);
+      await NotificationService.scheduleForTask(
+        task,
+        reminderBefore: task.reminderBefore ?? Duration.zero,
+      );
       updatedTasks.add(task.copyWith(reminderSet: task.dateTime != null));
     }
 

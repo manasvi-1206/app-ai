@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/buddy_logo.dart';
 import 'professional_screen.dart';
 import 'student_screen.dart';
 
@@ -15,7 +16,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7F2F4),
         foregroundColor: const Color(0xFF151515),
-        title: const Text("AI Personal Assistant"),
+        title: const BuddyLogo(size: 34, showWordmark: true),
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
@@ -23,7 +24,7 @@ class HomeScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Welcome, $displayName",
+              "Welcome to Buddy,\n$displayName",
               style: const TextStyle(
                 color: Color(0xFF151515),
                 fontSize: 32,
@@ -39,7 +40,8 @@ class HomeScreen extends StatelessWidget {
             _WorkspaceCard(
               icon: Icons.school_outlined,
               title: "Student Mode",
-              subtitle: "Classes, tests, study reminders, and timetable photos.",
+              subtitle:
+                  "Classes, tests, study reminders, and timetable photos.",
               color: const Color(0xFFE57399),
               onTap: () {
                 Navigator.push(
