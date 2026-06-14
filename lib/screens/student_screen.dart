@@ -29,6 +29,7 @@ class _StudentScreenState extends State<StudentScreen> {
 
   int _nextId = 100;
   int _selectedIndex = 0;
+  int _completedGoals = 0;
 
   Future<void> _addTasks(List<TaskEntry> tasks) async {
     final updatedTasks = <TaskEntry>[];
@@ -47,6 +48,58 @@ class _StudentScreenState extends State<StudentScreen> {
     });
   }
 
+  Future<void> _deleteTask(TaskEntry task) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Delete task"),
+          content: const Text("Are you sure you want to delete this schedule?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text(
+                "Delete",
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    await NotificationService.cancelForTask(task);
+
+    setState(() {
+      _tasks.removeWhere((entry) => entry.id == task.id);
+    });
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Schedule deleted")),
+    );
+  }
+
+  Future<void> _completeTask(TaskEntry task) async {
+    await NotificationService.cancelForTask(task);
+
+    setState(() {
+      _tasks.removeWhere((entry) => entry.id == task.id);
+      _completedGoals += 1;
+    });
+  }
+
   Future<void> _openAssistantTools() async {
     final tasks = await Navigator.push<List<TaskEntry>>(
       context,
@@ -55,6 +108,7 @@ class _StudentScreenState extends State<StudentScreen> {
           title: "Add to Student Planner",
           nextId: _nextId,
           historyKey: "student",
+          enableStudentAi: true,
           onTasksCreated: _addTasks,
         ),
       ),
@@ -69,6 +123,15 @@ class _StudentScreenState extends State<StudentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final studyPlanTasks = _tasks
+        .where((task) => task.source == "study_plan")
+        .toList()
+      ..sort((a, b) {
+        final aDate = a.dateTime ?? DateTime(9999);
+        final bDate = b.dateTime ?? DateTime(9999);
+        return aDate.compareTo(bDate);
+      });
+
     return Scaffold(
       backgroundColor: const Color(0xFFFDFBF7),
       appBar: AppBar(
@@ -125,8 +188,20 @@ class _StudentScreenState extends State<StudentScreen> {
                   ],
                 ),
               ),
-              _StudentHubCard(tasksCount: _tasks.length),
+              _StudentHubCard(
+                tasksCount: _tasks.length,
+                notesCount: studyPlanTasks.length,
+                completedGoals: _completedGoals,
+              ),
               const _StudyFocusBanner(),
+              if (studyPlanTasks.isNotEmpty) ...[
+                const _SectionTitle("Notes"),
+                _StudyPlanNotesSection(
+                  tasks: studyPlanTasks,
+                  onDelete: _deleteTask,
+                  onComplete: _completeTask,
+                ),
+              ],
               const _SectionTitle("Today's Study Tasks"),
               if (_tasks.isEmpty)
                 const Padding(
@@ -138,13 +213,20 @@ class _StudentScreenState extends State<StudentScreen> {
                   ),
                 )
               else
-                ..._tasks.map((task) => _StudentTaskCard(task: task)),
+                ..._tasks.map(
+                  (task) => _StudentTaskCard(
+                    task: task,
+                    onDelete: _deleteTask,
+                    onComplete: _completeTask,
+                  ),
+                ),
             ],
           ),
           CalendarScreen(
             tasks: _tasks,
             accentColor: const Color(0xFFE57399),
             title: "Student\nSchedule",
+            onDelete: _deleteTask,
           ),
         ],
       ),
@@ -161,8 +243,14 @@ class _StudentScreenState extends State<StudentScreen> {
 
 class _StudentHubCard extends StatelessWidget {
   final int tasksCount;
+  final int notesCount;
+  final int completedGoals;
 
-  const _StudentHubCard({required this.tasksCount});
+  const _StudentHubCard({
+    required this.tasksCount,
+    required this.notesCount,
+    required this.completedGoals,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -211,12 +299,12 @@ class _StudentHubCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: _StudentStatCard(
                   icon: Icons.star_border,
                   iconColor: Colors.orange,
                   title: "Goals",
-                  value: "1",
+                  value: "$completedGoals",
                 ),
               ),
               const SizedBox(width: 8),
@@ -229,12 +317,12 @@ class _StudentHubCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: _StudentStatCard(
                   icon: Icons.assignment_outlined,
                   iconColor: Colors.pinkAccent,
                   title: "Notes",
-                  value: "0",
+                  value: "$notesCount",
                 ),
               ),
             ],
@@ -301,20 +389,131 @@ class _SectionTitle extends StatelessWidget {
 
 class _StudentTaskCard extends StatelessWidget {
   final TaskEntry task;
+  final Future<void> Function(TaskEntry) onDelete;
+  final Future<void> Function(TaskEntry) onComplete;
 
-  const _StudentTaskCard({required this.task});
+  const _StudentTaskCard({
+    required this.task,
+    required this.onDelete,
+    required this.onComplete,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isImage = task.source == "image";
     final isVoice = task.source == "voice";
+    final isStudyPlan = task.source == "study_plan";
 
+    return Dismissible(
+      key: ValueKey("student-task-${task.id}"),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        await onDelete(task);
+        return false;
+      },
+      background: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.only(right: 20),
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          color: Colors.redAccent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Checkbox(
+              value: false,
+              activeColor: const Color(0xFFE57399),
+              onChanged: (_) => onComplete(task),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isImage
+                    ? const Color(0xFFFCE4EC)
+                    : const Color(0xFFE8EAF6),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                isStudyPlan
+                    ? Icons.notes_outlined
+                    : isImage
+                    ? Icons.image_outlined
+                    : isVoice
+                    ? Icons.mic_none_rounded
+                    : Icons.description_outlined,
+                color: isStudyPlan
+                    ? Colors.deepPurple
+                    : isImage
+                    ? Colors.pink
+                    : Colors.indigo,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    task.dateLabel,
+                    style: const TextStyle(fontSize: 12, color: Colors.black45),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StudyPlanNotesSection extends StatelessWidget {
+  final List<TaskEntry> tasks;
+  final Future<void> Function(TaskEntry) onDelete;
+  final Future<void> Function(TaskEntry) onComplete;
+
+  const _StudyPlanNotesSection({
+    required this.tasks,
+    required this.onDelete,
+    required this.onComplete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -323,50 +522,68 @@ class _StudentTaskCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isImage
-                  ? const Color(0xFFFCE4EC)
-                  : const Color(0xFFE8EAF6),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              isImage
-                  ? Icons.image_outlined
-                  : isVoice
-                  ? Icons.mic_none_rounded
-                  : Icons.description_outlined,
-              color: isImage ? Colors.pink : Colors.indigo,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+      child: Column(
+        children: tasks
+            .map(
+              (task) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Dismissible(
+                  key: ValueKey("student-note-${task.id}"),
+                  direction: DismissDirection.endToStart,
+                  confirmDismiss: (_) async {
+                    await onDelete(task);
+                    return false;
+                  },
+                  background: Container(
+                    padding: const EdgeInsets.only(right: 16),
+                    alignment: Alignment.centerRight,
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.delete_outline, color: Colors.white),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.sticky_note_2_outlined,
+                        color: Colors.deepPurple,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              task.title,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              task.dateLabel,
+                              style: const TextStyle(
+                                color: Colors.black45,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Checkbox(
+                        value: false,
+                        activeColor: const Color(0xFFE57399),
+                        onChanged: (_) => onComplete(task),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  task.dateLabel,
-                  style: const TextStyle(fontSize: 12, color: Colors.black45),
-                ),
-              ],
-            ),
-          ),
-          if (task.reminderSet)
-            const Icon(Icons.notifications_none, color: Colors.indigoAccent),
-        ],
+              ),
+            )
+            .toList(),
       ),
     );
   }

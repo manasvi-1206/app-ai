@@ -71,6 +71,10 @@ class NotificationService {
     );
   }
 
+  static Future<void> cancelForTask(TaskEntry entry) async {
+    await _notificationsPlugin.cancel(id: entry.id);
+  }
+
   static NotificationDetails _notificationDetails() {
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(

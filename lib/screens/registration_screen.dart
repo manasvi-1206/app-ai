@@ -154,8 +154,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                const _FeatureRow(),
               ],
             ),
           ),
@@ -231,67 +229,6 @@ class _AuthHeader extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _FeatureRow extends StatelessWidget {
-  const _FeatureRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        Expanded(
-          child: _FeatureChip(
-            icon: Icons.image_search_outlined,
-            label: "Image tasks",
-          ),
-        ),
-        SizedBox(width: 10),
-        Expanded(
-          child: _FeatureChip(
-            icon: Icons.notifications_none,
-            label: "Reminders",
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FeatureChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _FeatureChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: const Color(0xFF777777), size: 18),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF151515),
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -6,12 +6,14 @@ class CalendarScreen extends StatefulWidget {
   final List<TaskEntry> tasks;
   final Color accentColor;
   final String title;
+  final ValueChanged<TaskEntry>? onDelete;
 
   const CalendarScreen({
     super.key,
     required this.tasks,
     required this.accentColor,
     required this.title,
+    this.onDelete,
   });
 
   @override
@@ -100,8 +102,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
             const _EmptyDayCard()
           else
             ...selectedTasks.map(
-              (task) =>
-                  _TaskDayCard(task: task, accentColor: widget.accentColor),
+              (task) => _TaskDayCard(
+                task: task,
+                accentColor: widget.accentColor,
+                onDelete: widget.onDelete,
+              ),
             ),
         ],
       ),
@@ -299,8 +304,13 @@ class _WeekdayLabel extends StatelessWidget {
 class _TaskDayCard extends StatelessWidget {
   final TaskEntry task;
   final Color accentColor;
+  final ValueChanged<TaskEntry>? onDelete;
 
-  const _TaskDayCard({required this.task, required this.accentColor});
+  const _TaskDayCard({
+    required this.task,
+    required this.accentColor,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -335,6 +345,12 @@ class _TaskDayCard extends StatelessWidget {
               ],
             ),
           ),
+          if (onDelete != null)
+            IconButton(
+              tooltip: "Delete schedule",
+              onPressed: () => onDelete!(task),
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            ),
         ],
       ),
     );

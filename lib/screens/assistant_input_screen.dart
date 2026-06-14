@@ -8,6 +8,7 @@ class AssistantInputScreen extends StatefulWidget {
   final String title;
   final int nextId;
   final String historyKey;
+  final bool enableStudentAi;
   final Future<void> Function(List<TaskEntry>)? onTasksCreated;
 
   const AssistantInputScreen({
@@ -15,6 +16,7 @@ class AssistantInputScreen extends StatefulWidget {
     required this.title,
     required this.nextId,
     required this.historyKey,
+    this.enableStudentAi = false,
     this.onTasksCreated,
   });
 
@@ -90,6 +92,7 @@ class _AssistantInputScreenState extends State<AssistantInputScreen> {
           SmartInputBar(
             nextId: widget.nextId + _createdTasks.length,
             historyKey: widget.historyKey,
+            enableStudentAi: widget.enableStudentAi,
             onHistoryChanged: () {
               setState(() {});
             },

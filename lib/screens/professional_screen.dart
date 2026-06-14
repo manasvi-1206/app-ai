@@ -69,6 +69,9 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final meetingsCount = _tasks.where(_isMeetingTask).length;
+    final notesCount = _tasks.where(_isNotesTask).length;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
@@ -125,7 +128,11 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
                   ],
                 ),
               ),
-              _ProfessionalHubCard(tasksCount: _tasks.length),
+              _ProfessionalHubCard(
+                tasksCount: _tasks.length,
+                meetingsCount: meetingsCount,
+                notesCount: notesCount,
+              ),
               const _WorkFocusBanner(),
               const _SectionTitle("Today's Work Tasks"),
               if (_tasks.isEmpty)
@@ -157,12 +164,31 @@ class _ProfessionalScreenState extends State<ProfessionalScreen> {
       ),
     );
   }
+
+  bool _isMeetingTask(TaskEntry task) {
+    final title = task.title.toLowerCase();
+    return title.contains("meeting") ||
+        title.contains("meet") ||
+        title.contains("sync") ||
+        title.contains("call");
+  }
+
+  bool _isNotesTask(TaskEntry task) {
+    final title = task.title.toLowerCase();
+    return title.contains("note") || title.contains("notes");
+  }
 }
 
 class _ProfessionalHubCard extends StatelessWidget {
   final int tasksCount;
+  final int meetingsCount;
+  final int notesCount;
 
-  const _ProfessionalHubCard({required this.tasksCount});
+  const _ProfessionalHubCard({
+    required this.tasksCount,
+    required this.meetingsCount,
+    required this.notesCount,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -211,12 +237,12 @@ class _ProfessionalHubCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: _ProfessionalStatCard(
                   icon: Icons.groups_outlined,
                   iconColor: Colors.teal,
                   title: "Meetings",
-                  value: "1",
+                  value: "$meetingsCount",
                 ),
               ),
               const SizedBox(width: 8),
@@ -229,12 +255,12 @@ class _ProfessionalHubCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: _ProfessionalStatCard(
                   icon: Icons.description_outlined,
                   iconColor: Colors.indigo,
                   title: "Notes",
-                  value: "0",
+                  value: "$notesCount",
                 ),
               ),
             ],
